@@ -13,8 +13,8 @@ def get_page(url: str) -> str:
         and cache the result with an expiration time of 10 seconds """
     r.set(f"cached:{url}", count)
     resp = requests.get(url)
-    r.incr(f"count:{url}")
-    r.setex(f"cached:{url}", 10, r.get(f"cached:{url}"))
+    r.incr(f'count:{url}')
+    r.set(f'page:{url}', page_content, ex=10)
     return resp.text
 
 
