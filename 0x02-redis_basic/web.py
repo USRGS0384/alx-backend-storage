@@ -1,31 +1,38 @@
 #!/usr/bin/env python3
-import unittest
-import time
-from web import get_page, r
+'''A module with tools for request caching and tracking.
+'''
+import redis
+import requests
+from functools import wraps
+from typing import Callable
 
-class TestWebCache(unittest.TestCase):
 
-    def test_get_page_cache(self):
-        url = 'http://google.com'
-        result_1 = get_page(url)
-        result_2 = get_page(url)
-        self.assertEqual(result_1, result_2)
+redis_store = redis.Redis()
+'''The module-level Redis instance.
+'''
 
-        time.sleep(11)
-        result_3 = get_page(url)
-        self.assertNotEqual(result_1, result_3)
 
-    def test_increment_count(self):
-        url = 'http://google.com'
-        r.delete(f'count:{url}')  # Reset count for testing
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
+    @wraps(method)
+    def invoker(url) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        result = method(url)
+        redis_store.set(f'count:{url}', 0)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    return invoker
 
-        get_page(url)
-        count_1 = r.get(f'count:{url}')
 
-        get_page(url)
-        count_2 = r.get(f'count:{url}')
-
-        self.assertEqual(int(count_1) + 1, int(count_2))
-
-if __name__ == '__main__':
-    unittest.main()
+@data_cacher
+def get_page(url: str) -> str:
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    return requests.get(url).text
