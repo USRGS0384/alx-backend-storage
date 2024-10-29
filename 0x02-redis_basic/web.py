@@ -1,57 +1,39 @@
-import requests
+#!/usr/bin/env python3
+"""Module containing function to return HTML content of a particular URL"""
 import redis
-import time
+import requests
+from functools import wraps
 
-# Initialize Redis connection
-r = redis.Redis()
+data = redis.Redis()
 
+
+def cached_content_fun(method):
+    """Function that returns html content"""
+
+    @wraps(method)
+    def wrapper(url: str):
+        cached_content = data.get(f"cached:{url}")
+        if cached_content:
+            return cached_content.decode('utf-8')
+
+        content = method(url)
+        data.setex(f"cached:{url}", 10, content)
+        return content
+
+    return wrapper
+
+
+@cached_content_fun
 def get_page(url: str) -> str:
-    cached_page = r.get(f'page:{url}')
-    if cached_page:
-        r.incr(f'count:{url}')
-        return cached_page.decode('utf-8')
+    """Function thattracks how many times a particular URL was accessed"""
 
-    response = requests.get(url)
-    page_content = response.text
+    count = data.incr(f"count:{url}")
+    content = requests.get(url).text
+    # print(content)
+    # print("Count: {}".format(count))
+    return content
 
-    # Store the page content in the cache with an expiration of 10 seconds
-    r.set(f'page:{url}', page_content, ex=10)
-    r.set(f'count:{url}', 1)
 
-    return
-
-if __name__ == "__main__":
-    url = 'http://slowwly.robertomurray.co.uk'
-    print(get_page(url))  # First access, should fetch and cache
-    time.sleep(5)
-    print(get_page(url))  # Cache hit, should be faster
-    time.sleep(6)
-    print(get_page(url))  # Cache expired, should fetch again
-
-def cache_decorator(expiration_time: int):
-    def decorator(func):
-        def wrapper(url: str):
-            cached_page = r.get(f'page:{url}')
-            if cached_page:
-                r.incr(f'count:{url}')
-                return cached_page.decode('utf-8')
-
-            result = func(url)
-            r.set(f'page:{url}', result, ex=expiration_time)
-            r.set(f'count:{url}', 1)
-            return result
-        return wrapper
-    return decorator
-
-@cache_decorator(10)
-def get_page(url: str) -> str:
-    response = requests.get(url)
-    return response.text
-
-if __name__ == "__main__":
-    url = 'http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.example.com'
-    print(get_page(url))  # First access, should fetch and cache
-    time.sleep(5)
-    print(get_page(url))  # Cache hit, should be faster
-    time.sleep(6)
-    print(get_page(url))  # Cache expired, should fetch again
+# if __name__ == "__main__":
+    # get_page('http://slowwly.robertomurray.co.uk')
+    # get_page('http://google.com')
