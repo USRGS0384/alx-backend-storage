@@ -13,11 +13,11 @@ def cached_content_fun(method):
     @wraps(method)
     def wrapper(url: str):
         cached_content = data.get(f"cached:{url}")
-        if cached_content:
+        if cached_content and data.exists(f"cached:{url}"):
             return cached_content.decode('utf-8')
 
         content = method(url)
-        data.setex(f"cached:{url}", 10, content)
+        data.expire(f"cached:{url}", 10, content)
         return content
 
     return wrapper
@@ -25,10 +25,9 @@ def cached_content_fun(method):
 
 @cached_content_fun
 def get_page(url: str) -> str:
-    """Function thattracks how many times a particular URL was accessed"""
-
     count = data.incr(f"count:{url}")
     content = requests.get(url).text
+    return (content, count)
     # print(content)
     # print("Count: {}".format(count))
     return content
